@@ -10,6 +10,7 @@ extern crate chrono;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
+extern crate futures;
 extern crate gettextrs;
 extern crate hex;
 extern crate heck;
@@ -23,6 +24,7 @@ extern crate serde;
 extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
+extern crate tokio;
 
 pub mod activity_pub;
 pub mod utils;

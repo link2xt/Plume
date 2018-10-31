@@ -1,12 +1,15 @@
 use activitypub::{Activity, Actor, Object, Link};
 use array_tool::vec::Uniq;
-use reqwest::Client;
+use futures::{Future, Stream};
+use reqwest::async::{Client, Decoder};
 use rocket::{
     Outcome, http::Status,
     response::{Response, Responder},
     request::{FromRequest, Request}
 };
 use serde_json;
+use std::{io::{self, Cursor}, mem};
+use tokio;
 
 use self::sign::Signable;
 
@@ -102,26 +105,26 @@ pub fn broadcast<S: sign::Signer, A: Activity, T: inbox::WithInbox + Actor>(send
     let signed = act.sign(sender);
 
     for inbox in boxes {
-        // TODO: run it in Sidekiq or something like that
         let mut headers = request::headers();
         headers.insert("Digest", request::Digest::digest(signed.to_string()));
-        let res = Client::new()
+        tokio::run(Client::new()
             .post(&inbox[..])
             .headers(headers.clone())
             .header("Signature", request::signature(sender, headers))
             .body(signed.to_string())
-            .send();
-        match res {
-            Ok(mut r) => {
+            .send()
+            .and_then(move |mut res| {
                 println!("Successfully sent activity to inbox ({})", inbox);
-                if let Ok(response) = r.text() {
-                    println!("Response: \"{:?}\"\n\n", response)
-                } else {
-                    println!("Error while reading response")
-                }
-            },
-            Err(e) => println!("Error while sending to inbox ({:?})", e)
-        }
+                let body = mem::replace(res.body_mut(), Decoder::empty());
+                body.concat2()
+            })
+            .map(|body| {
+                println!("Response:");
+				let mut body = Cursor::new(body);
+                io::copy(&mut body, &mut io::stdout())
+                	.expect("broadcast: stdout error");
+            })
+            .map_err(|e| println!("Error while sending to inbox ({:?})", e)))
     }
 }
 
